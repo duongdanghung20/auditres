@@ -1,0 +1,49 @@
+#!/bin/bash
+
+# Create the namespace for the host
+ip netns add h1
+
+# Create the switch for the local IPv6 network
+ovs-vsctl add-br s1
+
+# Create the links
+ip link add bridge_ipv6 type veth peer name s1-r1
+ip link add eth0 type veth peer name s1-h1
+
+# Hook the link to the namespace
+ip link set eth0 netns h1
+
+# Connect the links to the switch
+ovs-vsctl add-port s1 s1-r1
+ovs-vsctl add-port s1 s1-h1
+
+# Activate the interface of namespace root
+ip link set dev s1-r1 up
+ip link set dev s1-h1 up
+ip link set dev bridge_ipv6 up
+
+# Activate the interface of namespace h1
+ip netns exec h1 ip link set dev eth0 up
+ip netns exec h1 ip link set dev lo up
+
+# Activate the Router Advertisement Daemon (radvd)
+INTERFACE=bridge_ipv6
+CONFIG=$(cat <<END
+interface $INTERFACE
+{
+    AdvSendAdvert on;
+    MinRtrAdvInterval 5;
+    MaxRtrAdvInterval 15;
+    prefix 2001:2:3:4501::/64
+    {
+        AdvOnLink on;
+        AdvAutonomous on;
+    };
+};
+END
+)
+
+radvd -C <(echo "$CONFIG")
+
+# Authorize automatic configuration of the post to accept Router Advertisement
+sudo sysctl -w net.ipv6.conf.bridge_ipv6.accept_ra=2
