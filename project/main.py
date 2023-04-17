@@ -19,6 +19,13 @@ if __name__ == "__main__":
     ## Find the IPv4 and IPv6 addresses of the server by sending DNS Request using dig command, mode A (to find IPv4) and AAAA (to find IPv6)
     SERVER_DOMAIN_NAME = sys.argv[1]
     SERVER_IPV4, SERVER_IPV6 = [subprocess.run(["dig", "+short", SERVER_DOMAIN_NAME, dig_type], capture_output=True).stdout.decode().strip("\n") for dig_type in ["A", "AAAA"]]
+
+    ## Configure the firewall using NetFilter to cooperate with NFQueue
+    subprocess.run(["ip6tables", "-t", "mangle", "-F"])
+    subprocess.run(["iptables", "-t", "mangle", "-F"])
+    subprocess.run(["ip6tables", "-t", "mangle", "-A", "PREROUTING", "-i", LOCAL_IPV6_IFACE, "-p", "tcp", "-s", IPV6_PREFIX + ":/64", "-j", "NFQUEUE", "--queue-num", "1"])
+    subprocess.run(["iptables", "-t", "mangle", "-A", "PREROUTING", "-i", INTERNET_IFACE, "-p", "tcp", "-s", SERVER_IPV4, "--sport", "80", "-j", "NFQUEUE", "--queue-num", "2"])
+
     if len(SERVER_IPV4) == 0 or SERVER_IPV4 is None:
         raise Exception("This domain has no IPv4 address")
     if len(SERVER_IPV6) == 0 or SERVER_IPV6 is None:
